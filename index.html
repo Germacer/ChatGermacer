@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TERMINAL P2P - SESSÃO EFÊMERA</title>
+    <style>
+        /* Estilo Retro/Terminal */
+        body {
+            background-color: #000;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Barra de Status Superior */
+        header {
+            border-bottom: 1px solid #0f0;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85em;
+            background: #050505;
+        }
+
+        #my-id { font-weight: bold; color: #fff; text-decoration: underline; }
+
+        /* Área de Mensagens */
+        #chat-window {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .msg { border-left: 2px solid #0f0; padding-left: 10px; }
+        .system { color: #888; font-style: italic; }
+        .received { color: #0f0; }
+        .sent { color: #fff; }
+
+        /* Rodapé de Entrada */
+        footer {
+            border-top: 1px solid #0f0;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            background: #050505;
+        }
+
+        input[type="text"] {
+            background: #000;
+            border: 1px solid #0f0;
+            color: #0f0;
+            flex-grow: 1;
+            padding: 10px;
+            outline: none;
+            font-family: inherit;
+        }
+
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: inherit;
+            text-transform: uppercase;
+        }
+
+        button:hover { background: #0c0; }
+
+        #btn-menu { border: 1px solid #0f0; background: transparent; color: #0f0; }
+        #btn-menu:hover { background: #0f0; color: #000; }
+
+        /* Scrollbar customizada */
+        #chat-window::-webkit-scrollbar { width: 5px; }
+        #chat-window::-webkit-scrollbar-thumb { background: #0f0; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>LINK/CÓDIGO: <span id="my-id">GERANDO...</span></div>
+        <button id="btn-menu" onclick="connectToUser()">[ MENU: CONECTAR ]</button>
+    </header>
+
+    <div id="chat-window">
+        <div class="msg system">SISTEMA: Aguardando inicialização do sinal...</div>
+    </div>
+
+    <footer>
+        <input type="text" id="message-input" placeholder="Escreva sua mensagem..." autocomplete="off">
+        <button onclick="sendMessage()">Enviar</button>
+    </footer>
+
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <script>
+        const chatWindow = document.getElementById('chat-window');
+        const messageInput = document.getElementById('message-input');
+        const myIdDisplay = document.getElementById('my-id');
+        
+        let peer = new Peer(); // Cria um ID aleatório automaticamente
+        let activeConn = null;
+
+        // 1. Ao abrir, gera o ID
+        peer.on('open', (id) => {
+            myIdDisplay.innerText = id;
+            logSystem("Sessão iniciada. Seu código está pronto.");
+        });
+
+        // 2. Receber solicitação de conversa (Você é o destino)
+        peer.on('connection', (conn) => {
+            if (activeConn) {
+                conn.send("SISTEMA: O usuário já está em uma conversa privada.");
+                conn.close();
+                return;
+            }
+
+            const accepted = confirm(`USUÁRIO ${conn.peer} quer conversar com você. Aceitar?`);
+            
+            if (accepted) {
+                activeConn = conn;
+                setupConnection();
+                logSystem(`Conectado com: ${conn.peer}`);
+            } else {
+                conn.close();
+            }
+        });
+
+        // 3. Iniciar conexão (Botão Menu)
+        function connectToUser() {
+            if (activeConn) {
+                alert("Você já está em uma seção. Atualize a página para resetar.");
+                return;
+            }
+            const remoteId = prompt("Digite o CÓDIGO/LINK da pessoa:");
+            if (remoteId && remoteId !== peer.id) {
+                activeConn = peer.connect(remoteId);
+                setupConnection();
+                logSystem(`Tentando conectar a ${remoteId}...`);
+            }
+        }
+
+        // 4. Configurar eventos da conexão ativa
+        function setupConnection() {
+            activeConn.on('data', (data) => {
+                appendMessage("ELE", data, 'received');
+            });
+
+            activeConn.on('open', () => {
+                logSystem("Conversa estabelecida. O que for dito aqui morrerá ao fechar a página.");
+            });
+
+            activeConn.on('close', () => {
+                logSystem("A outra pessoa encerrou a conexão ou atualizou a página.");
+                activeConn = null;
+            });
+        }
+
+        // 5. Enviar Mensagem
+        function sendMessage() {
+            const text = messageInput.value;
+            if (text && activeConn && activeConn.open) {
+                activeConn.send(text);
+                appendMessage("VOCÊ", text, 'sent');
+                messageInput.value = "";
+            } else if (!activeConn) {
+                logSystem("ERRO: Você não está conectado a ninguém.");
+            }
+        }
+
+        // Auxiliares de UI
+        function logSystem(text) {
+            const div = document.createElement('div');
+            div.className = "msg system";
+            div.innerText = `> ${text}`;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function appendMessage(sender, text, type) {
+            const div = document.createElement('div');
+            div.className = `msg ${type}`;
+            div.innerHTML = `<b>[${sender}]:</b> ${text}`;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        // Enviar com a tecla Enter
+        messageInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") sendMessage();
+        });
+    </script>
+</body>
+</html>
